@@ -53,7 +53,9 @@ export async function POST(request: Request) {
     const token = process.env.PAGBANK_TOKEN;
 
     if (!token) {
-      console.error("PAGBANK_TOKEN não configurado no Netlify.");
+      console.error(
+        "PAGBANK_TOKEN não configurado no servidor."
+      );
 
       return Response.json(
         {
@@ -128,73 +130,84 @@ export async function POST(request: Request) {
 
     const status = String(
       cobranca?.status || notificacao.status || ""
-    ).toUpperCase();
+    )
+      .trim()
+      .toUpperCase();
 
     const referencia = String(
       notificacao.reference_id ||
         cobranca?.reference_id ||
         ""
-    );
+    ).trim();
+
+    const pagamentoId = String(
+      notificacao.id || cobranca?.id || ""
+    ).trim();
 
     console.log("Notificação PagBank recebida:", {
       notificacaoId: notificacao.id,
       cobrancaId: cobranca?.id,
       referencia,
+      pagamentoId,
       status,
     });
+
+    const { prisma } = await import(
+      "../../../../lib/prisma"
+    );
+
+    let matriculaId: number | null = null;
 
     const resultadoReferencia = referencia.match(
       /^matricula-(\d+)-/
     );
 
-    if (!resultadoReferencia) {
-      console.log(
-        "Notificação ignorada: referência da matrícula não encontrada."
-      );
+    if (resultadoReferencia) {
+      const idEncontrado = Number(resultadoReferencia[1]);
 
-      return Response.json({
-        recebido: true,
-        ignorado: true,
-        motivo: "Referência da matrícula não encontrada.",
+      if (
+        Number.isInteger(idEncontrado) &&
+        idEncontrado > 0
+      ) {
+        matriculaId = idEncontrado;
+      }
+    }
+
+    let matricula = matriculaId
+      ? await prisma.matricula.findUnique({
+          where: {
+            id: matriculaId,
+          },
+        })
+      : null;
+
+    if (!matricula && pagamentoId) {
+      matricula = await prisma.matricula.findFirst({
+        where: {
+          pagamentoId,
+        },
       });
     }
 
-    const matriculaId = Number(resultadoReferencia[1]);
-
-    if (
-      !Number.isInteger(matriculaId) ||
-      matriculaId <= 0
-    ) {
-      return Response.json({
-        recebido: true,
-        ignorado: true,
-        motivo: "ID da matrícula inválido.",
+    if (!matricula && notificacao.id) {
+      matricula = await prisma.matricula.findFirst({
+        where: {
+          pagamentoId: notificacao.id,
+        },
       });
     }
-
-    /*
-      O Prisma é carregado somente aqui.
-      Assim, abrir o GET do webhook não depende do banco.
-    */
-    const { prisma } = await import(
-      "../../../../lib/prisma"
-    );
-
-    const matricula = await prisma.matricula.findUnique({
-      where: {
-        id: matriculaId,
-      },
-    });
 
     if (!matricula) {
       console.log(
-        `Matrícula ${matriculaId} não encontrada.`
+        "Notificação ignorada: matrícula não encontrada."
       );
 
       return Response.json({
         recebido: true,
         ignorado: true,
         motivo: "Matrícula não encontrada.",
+        referencia,
+        status,
       });
     }
 
@@ -202,7 +215,7 @@ export async function POST(request: Request) {
       const matriculaLiberada =
         await prisma.matricula.update({
           where: {
-            id: matriculaId,
+            id: matricula.id,
           },
           data: {
             status: "LIBERADO",
@@ -212,24 +225,39 @@ export async function POST(request: Request) {
         });
 
       console.log(
-        `Matrícula ${matriculaId} liberada automaticamente.`
+        `Matrícula ${matricula.id} liberada automaticamente.`
       );
 
       return Response.json({
         recebido: true,
         liberado: true,
         matriculaId: matriculaLiberada.id,
+        status,
+      });
+    }
+
+    if (
+      status === "DECLINED" ||
+      status === "CANCELED"
+    ) {
+      await prisma.matricula.update({
+        where: {
+          id: matricula.id,
+        },
+        data: {
+          status: "PENDENTE",
+        },
       });
     }
 
     console.log(
-      `Matrícula ${matriculaId} não liberada. Status recebido: ${status}`
+      `Matrícula ${matricula.id} não liberada. Status recebido: ${status}`
     );
 
     return Response.json({
       recebido: true,
       liberado: false,
-      matriculaId,
+      matriculaId: matricula.id,
       status,
     });
   } catch (erro) {
@@ -238,9 +266,15 @@ export async function POST(request: Request) {
       erro
     );
 
+    const detalhe =
+      erro instanceof Error
+        ? erro.message
+        : "Erro desconhecido.";
+
     return Response.json(
       {
         erro: "Não foi possível processar a notificação.",
+        detalhe,
       },
       {
         status: 500,

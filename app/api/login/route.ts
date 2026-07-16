@@ -6,9 +6,16 @@ export async function POST(request: Request) {
   try {
     const { email, senha } = await request.json();
 
+    if (!email || !senha) {
+      return NextResponse.json(
+        { mensagem: "Informe o e-mail e a senha." },
+        { status: 400 }
+      );
+    }
+
     const aluno = await prisma.aluno.findUnique({
       where: {
-        email,
+        email: String(email).trim().toLowerCase(),
       },
     });
 
@@ -19,7 +26,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const senhaCorreta = await bcrypt.compare(senha, aluno.senha);
+    const senhaCorreta = await bcrypt.compare(
+      String(senha),
+      aluno.senha
+    );
 
     if (!senhaCorreta) {
       return NextResponse.json(
@@ -40,10 +50,18 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error) {
-    console.error(error);
+    console.error("ERRO NO LOGIN:", error);
+
+    const detalhe =
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido no servidor.";
 
     return NextResponse.json(
-      { mensagem: "Erro interno do servidor." },
+      {
+        mensagem: "Erro interno do servidor.",
+        detalhe,
+      },
       { status: 500 }
     );
   }

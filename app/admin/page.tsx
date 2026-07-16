@@ -17,8 +17,8 @@ const opcoes = [
     titulo: "Alunos",
     descricao: "Ver os alunos cadastrados e suas informações.",
     simbolo: "👥",
-    href: "",
-    ativo: false,
+    href: "/admin/alunos",
+    ativo: true,
   },
   {
     titulo: "Pagamentos",

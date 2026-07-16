@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "crypto";
+import { prisma } from "../../../../lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ type NotificacaoPagBank = {
   charges?: CobrancaPagBank[];
 };
 
-function assinaturasIguais(
+function compararAssinaturas(
   assinaturaRecebida: string,
   assinaturaCalculada: string
 ) {
@@ -41,6 +42,12 @@ function assinaturasIguais(
   }
 }
 
+function ambienteSandbox() {
+  return String(process.env.PAGBANK_API_URL || "")
+    .toLowerCase()
+    .includes("sandbox");
+}
+
 export async function GET() {
   return Response.json({
     funcionando: true,
@@ -53,9 +60,7 @@ export async function POST(request: Request) {
     const token = process.env.PAGBANK_TOKEN;
 
     if (!token) {
-      console.error(
-        "PAGBANK_TOKEN não configurado no servidor."
-      );
+      console.error("PAGBANK_TOKEN não configurado.");
 
       return Response.json(
         {
@@ -67,48 +72,64 @@ export async function POST(request: Request) {
       );
     }
 
+    /*
+      O corpo precisa ser lido como texto antes de transformar em JSON,
+      porque a assinatura é calculada usando exatamente o corpo recebido.
+    */
+    const corpoOriginal = await request.text();
+
     const assinaturaRecebida =
       request.headers.get("x-authenticity-token");
 
+    /*
+      No ambiente de produção, a assinatura é obrigatória.
+
+      No Sandbox, permitimos continuar sem assinatura para facilitar
+      os testes, mas registramos um aviso no log.
+    */
     if (!assinaturaRecebida) {
-      console.error(
-        "Notificação recebida sem x-authenticity-token."
+      if (!ambienteSandbox()) {
+        console.error(
+          "Webhook recebido sem x-authenticity-token."
+        );
+
+        return Response.json(
+          {
+            erro: "Assinatura da notificação não encontrada.",
+          },
+          {
+            status: 401,
+          }
+        );
+      }
+
+      console.warn(
+        "Webhook Sandbox recebido sem x-authenticity-token."
       );
+    } else {
+      const assinaturaCalculada = createHash("sha256")
+        .update(`${token}-${corpoOriginal}`)
+        .digest("hex");
 
-      return Response.json(
-        {
-          erro: "Assinatura da notificação não encontrada.",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
-
-    const corpoOriginal = await request.text();
-
-    const assinaturaCalculada = createHash("sha256")
-      .update(`${token}-${corpoOriginal}`)
-      .digest("hex");
-
-    if (
-      !assinaturasIguais(
+      const assinaturaValida = compararAssinaturas(
         assinaturaRecebida,
         assinaturaCalculada
-      )
-    ) {
-      console.error(
-        "Notificação do PagBank com assinatura inválida."
       );
 
-      return Response.json(
-        {
-          erro: "Notificação não autorizada.",
-        },
-        {
-          status: 401,
-        }
-      );
+      if (!assinaturaValida) {
+        console.error(
+          "Webhook recebido com assinatura inválida."
+        );
+
+        return Response.json(
+          {
+            erro: "Notificação não autorizada.",
+          },
+          {
+            status: 401,
+          }
+        );
+      }
     }
 
     let notificacao: NotificacaoPagBank;
@@ -116,6 +137,8 @@ export async function POST(request: Request) {
     try {
       notificacao = JSON.parse(corpoOriginal);
     } catch {
+      console.error("Webhook recebeu JSON inválido.");
+
       return Response.json(
         {
           erro: "Conteúdo da notificação inválido.",
@@ -129,7 +152,9 @@ export async function POST(request: Request) {
     const cobranca = notificacao.charges?.[0];
 
     const status = String(
-      cobranca?.status || notificacao.status || ""
+      cobranca?.status ||
+        notificacao.status ||
+        ""
     )
       .trim()
       .toUpperCase();
@@ -140,55 +165,47 @@ export async function POST(request: Request) {
         ""
     ).trim();
 
-    const pagamentoId = String(
-      notificacao.id || cobranca?.id || ""
-    ).trim();
-
-    console.log("Notificação PagBank recebida:", {
-      notificacaoId: notificacao.id,
-      cobrancaId: cobranca?.id,
+    console.log("Webhook PagBank recebido:", {
+      notificacaoId: notificacao.id || null,
+      cobrancaId: cobranca?.id || null,
       referencia,
-      pagamentoId,
       status,
     });
 
-    const { prisma } = await import(
-      "../../../../lib/prisma"
-    );
+    /*
+      A referência criada no checkout tem este formato:
 
-    let matriculaId: number | null = null;
+      matricula-2-1720000000000
 
-    const resultadoReferencia = referencia.match(
+      Aqui retiramos o número da matrícula.
+    */
+    const referenciaEncontrada = referencia.match(
       /^matricula-(\d+)-/
     );
 
-    if (resultadoReferencia) {
-      const idEncontrado = Number(resultadoReferencia[1]);
+    let matricula = null;
+
+    if (referenciaEncontrada) {
+      const matriculaId = Number(
+        referenciaEncontrada[1]
+      );
 
       if (
-        Number.isInteger(idEncontrado) &&
-        idEncontrado > 0
+        Number.isInteger(matriculaId) &&
+        matriculaId > 0
       ) {
-        matriculaId = idEncontrado;
-      }
-    }
-
-    let matricula = matriculaId
-      ? await prisma.matricula.findUnique({
+        matricula = await prisma.matricula.findUnique({
           where: {
             id: matriculaId,
           },
-        })
-      : null;
-
-    if (!matricula && pagamentoId) {
-      matricula = await prisma.matricula.findFirst({
-        where: {
-          pagamentoId,
-        },
-      });
+        });
+      }
     }
 
+    /*
+      Segunda tentativa:
+      procura pelo ID salvo no campo pagamentoId.
+    */
     if (!matricula && notificacao.id) {
       matricula = await prisma.matricula.findFirst({
         where: {
@@ -197,9 +214,27 @@ export async function POST(request: Request) {
       });
     }
 
+    /*
+      Terceira tentativa:
+      procura pelo ID da cobrança.
+    */
+    if (!matricula && cobranca?.id) {
+      matricula = await prisma.matricula.findFirst({
+        where: {
+          pagamentoId: cobranca.id,
+        },
+      });
+    }
+
     if (!matricula) {
-      console.log(
-        "Notificação ignorada: matrícula não encontrada."
+      console.error(
+        "Webhook recebido, mas a matrícula não foi encontrada.",
+        {
+          referencia,
+          notificacaoId: notificacao.id,
+          cobrancaId: cobranca?.id,
+          status,
+        }
       );
 
       return Response.json({
@@ -211,6 +246,10 @@ export async function POST(request: Request) {
       });
     }
 
+    /*
+      PAID significa pagamento capturado/concluído.
+      Somente nesse status o curso será liberado.
+    */
     if (status === "PAID") {
       const matriculaLiberada =
         await prisma.matricula.update({
@@ -225,39 +264,27 @@ export async function POST(request: Request) {
         });
 
       console.log(
-        `Matrícula ${matricula.id} liberada automaticamente.`
+        `Matrícula ${matriculaLiberada.id} liberada automaticamente.`
       );
 
       return Response.json({
         recebido: true,
         liberado: true,
         matriculaId: matriculaLiberada.id,
+        cursoSlug: matriculaLiberada.cursoSlug,
         status,
       });
     }
 
-    if (
-      status === "DECLINED" ||
-      status === "CANCELED"
-    ) {
-      await prisma.matricula.update({
-        where: {
-          id: matricula.id,
-        },
-        data: {
-          status: "PENDENTE",
-        },
-      });
-    }
-
     console.log(
-      `Matrícula ${matricula.id} não liberada. Status recebido: ${status}`
+      `Matrícula ${matricula.id} continua pendente. Status recebido: ${status}`
     );
 
     return Response.json({
       recebido: true,
       liberado: false,
       matriculaId: matricula.id,
+      cursoSlug: matricula.cursoSlug,
       status,
     });
   } catch (erro) {
@@ -266,15 +293,13 @@ export async function POST(request: Request) {
       erro
     );
 
-    const detalhe =
-      erro instanceof Error
-        ? erro.message
-        : "Erro desconhecido.";
-
     return Response.json(
       {
         erro: "Não foi possível processar a notificação.",
-        detalhe,
+        detalhe:
+          erro instanceof Error
+            ? erro.message
+            : "Erro desconhecido.",
       },
       {
         status: 500,

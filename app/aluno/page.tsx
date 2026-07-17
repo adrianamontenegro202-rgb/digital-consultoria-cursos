@@ -55,14 +55,23 @@ export default function AreaDoAluno() {
         const dados = await resposta.json();
 
         if (!resposta.ok) {
-          setErro(dados.erro || "Não foi possível carregar seus cursos.");
+          setErro(
+            dados.erro ||
+              "Não foi possível carregar seus cursos."
+          );
           return;
         }
 
         setMatriculas(dados.matriculas || []);
       } catch (error) {
-        console.error("Erro ao carregar Área do Aluno:", error);
-        setErro("Não foi possível carregar sua Área do Aluno.");
+        console.error(
+          "Erro ao carregar Área do Aluno:",
+          error
+        );
+
+        setErro(
+          "Não foi possível carregar sua Área do Aluno."
+        );
       } finally {
         setCarregando(false);
       }
@@ -76,22 +85,36 @@ export default function AreaDoAluno() {
     router.push("/login");
   }
 
-  const cursosLiberados = matriculas.flatMap((matricula) => {
-    const curso = cursos.find(
-      (item) => item.slug === matricula.cursoSlug
-    );
+  const cursosLiberados = matriculas.flatMap(
+    (matricula) => {
+      const curso = cursos.find(
+        (item) => item.slug === matricula.cursoSlug
+      );
 
-    if (!curso) {
-      return [];
+      if (!curso) {
+        return [];
+      }
+
+      return [
+        {
+          ...curso,
+          matricula,
+          apostilaUrl: `/apostilas/${curso.slug}.pdf`,
+        },
+      ];
     }
+  );
 
-    return [
-      {
-        ...curso,
-        matricula,
-      },
-    ];
-  });
+  const cursosConcluidos = matriculas.filter(
+    (matricula) => matricula.concluidoEm
+  ).length;
+
+  const certificadosDisponiveis = matriculas.filter(
+    (matricula) =>
+      matricula.concluidoEm &&
+      matricula.notaFinal !== null &&
+      matricula.notaFinal >= 7
+  ).length;
 
   if (!aluno || carregando) {
     return (
@@ -177,7 +200,8 @@ export default function AreaDoAluno() {
                   fontSize: "14px",
                 }}
               >
-                Digital Consultoria e Serviços Técnicos LTDA
+                Digital Consultoria e Serviços Técnicos
+                LTDA
               </span>
             </div>
           </Link>
@@ -241,7 +265,8 @@ export default function AreaDoAluno() {
               lineHeight: "1.6",
             }}
           >
-            Acompanhe seus cursos, avaliações e certificados.
+            Acesse suas apostilas, avaliações e
+            certificados.
           </p>
         </div>
 
@@ -267,13 +292,27 @@ export default function AreaDoAluno() {
           </div>
 
           <div style={estiloResumo}>
-            <strong style={numeroResumo}>0</strong>
-            <span style={textoResumo}>Cursos concluídos</span>
+            <strong style={numeroResumo}>
+              {cursosConcluidos}
+            </strong>
+
+            <span style={textoResumo}>
+              {cursosConcluidos === 1
+                ? "Curso concluído"
+                : "Cursos concluídos"}
+            </span>
           </div>
 
           <div style={estiloResumo}>
-            <strong style={numeroResumo}>0</strong>
-            <span style={textoResumo}>Certificados emitidos</span>
+            <strong style={numeroResumo}>
+              {certificadosDisponiveis}
+            </strong>
+
+            <span style={textoResumo}>
+              {certificadosDisponiveis === 1
+                ? "Certificado disponível"
+                : "Certificados disponíveis"}
+            </span>
           </div>
         </div>
 
@@ -308,7 +347,8 @@ export default function AreaDoAluno() {
               borderRadius: "14px",
               padding: "30px",
               marginTop: "20px",
-              boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
+              boxShadow:
+                "0 6px 20px rgba(0,0,0,0.08)",
               textAlign: "center",
             }}
           >
@@ -327,8 +367,8 @@ export default function AreaDoAluno() {
                 lineHeight: "1.6",
               }}
             >
-              Depois que uma compra for aprovada, o curso aparecerá
-              nesta área.
+              Depois que uma compra for aprovada, o curso
+              aparecerá nesta área.
             </p>
 
             <Link
@@ -354,114 +394,154 @@ export default function AreaDoAluno() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "repeat(auto-fit, minmax(270px, 1fr))",
+                "repeat(auto-fit, minmax(290px, 1fr))",
               gap: "24px",
               marginTop: "20px",
             }}
           >
-            {cursosLiberados.map((curso) => (
-              <article
-                key={curso.matricula.id}
-                style={{
-                  backgroundColor: "#ffffff",
-                  borderRadius: "15px",
-                  overflow: "hidden",
-                  border: "1px solid #e5e5e5",
-                  boxShadow: "0 8px 25px rgba(0,0,0,0.08)",
-                }}
-              >
-                <div
+            {cursosLiberados.map((curso) => {
+              const aprovado =
+                curso.matricula.notaFinal !== null &&
+                curso.matricula.notaFinal >= 7;
+
+              return (
+                <article
+                  key={curso.matricula.id}
                   style={{
-                    background:
-                      "linear-gradient(135deg, #111111 0%, #303030 100%)",
-                    color: "#ffffff",
-                    padding: "27px",
+                    backgroundColor: "#ffffff",
+                    borderRadius: "15px",
+                    overflow: "hidden",
+                    border: "1px solid #e5e5e5",
+                    boxShadow:
+                      "0 8px 25px rgba(0,0,0,0.08)",
                   }}
                 >
-                  <span
-                    style={{
-                      display: "inline-block",
-                      backgroundColor: "#ffffff",
-                      color: "#111111",
-                      padding: "6px 11px",
-                      borderRadius: "20px",
-                      fontSize: "12px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Acesso liberado
-                  </span>
-
-                  <h3
-                    style={{
-                      fontSize: "30px",
-                      margin: "20px 0 5px",
-                    }}
-                  >
-                    {curso.nome}
-                  </h3>
-
-                  <p
-                    style={{
-                      color: "#d4d4d4",
-                      marginBottom: 0,
-                    }}
-                  >
-                    {curso.categoria}
-                  </p>
-                </div>
-
-                <div
-                  style={{
-                    padding: "24px",
-                  }}
-                >
-                  <p
-                    style={{
-                      color: "#166534",
-                      backgroundColor: "#dcfce7",
-                      borderRadius: "8px",
-                      padding: "11px",
-                      fontWeight: "bold",
-                      textAlign: "center",
-                    }}
-                  >
-                    ✓ Matrícula liberada
-                  </p>
-
                   <div
                     style={{
-                      borderTop: "1px solid #eeeeee",
-                      borderBottom: "1px solid #eeeeee",
-                      padding: "16px 0",
-                      margin: "18px 0",
+                      background:
+                        "linear-gradient(135deg, #111111 0%, #303030 100%)",
+                      color: "#ffffff",
+                      padding: "27px",
                     }}
                   >
-                    <p style={linhaCurso}>📄 Apostila em PDF</p>
-                    <p style={linhaCurso}>📝 Avaliação online</p>
-                    <p style={linhaCurso}>
-                      🏆 Certificado após aprovação
+                    <span
+                      style={{
+                        display: "inline-block",
+                        backgroundColor: "#ffffff",
+                        color: "#111111",
+                        padding: "6px 11px",
+                        borderRadius: "20px",
+                        fontSize: "12px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Acesso liberado
+                    </span>
+
+                    <h3
+                      style={{
+                        fontSize: "30px",
+                        margin: "20px 0 5px",
+                      }}
+                    >
+                      {curso.nome}
+                    </h3>
+
+                    <p
+                      style={{
+                        color: "#d4d4d4",
+                        marginBottom: 0,
+                      }}
+                    >
+                      {curso.categoria}
                     </p>
                   </div>
 
-                  <Link
-                    href={`/cursos/${curso.slug}`}
+                  <div
                     style={{
-                      display: "block",
-                      backgroundColor: "#111111",
-                      color: "#ffffff",
-                      padding: "14px",
-                      borderRadius: "8px",
-                      textDecoration: "none",
-                      textAlign: "center",
-                      fontWeight: "bold",
+                      padding: "24px",
                     }}
                   >
-                    Entrar no curso
-                  </Link>
-                </div>
-              </article>
-            ))}
+                    <p
+                      style={{
+                        color: "#166534",
+                        backgroundColor: "#dcfce7",
+                        borderRadius: "8px",
+                        padding: "11px",
+                        fontWeight: "bold",
+                        textAlign: "center",
+                      }}
+                    >
+                      ✓ Matrícula liberada
+                    </p>
+
+                    <div
+                      style={{
+                        borderTop: "1px solid #eeeeee",
+                        borderBottom:
+                          "1px solid #eeeeee",
+                        padding: "16px 0",
+                        margin: "18px 0",
+                      }}
+                    >
+                      <p style={linhaCurso}>
+                        📄 Apostila em PDF
+                      </p>
+
+                      <p style={linhaCurso}>
+                        📝 Avaliação online
+                      </p>
+
+                      <p style={linhaCurso}>
+                        🏆 Certificado após aprovação
+                      </p>
+
+                      {curso.matricula.notaFinal !==
+                        null && (
+                        <p style={linhaCurso}>
+                          📊 Nota final:{" "}
+                          <strong>
+                            {curso.matricula.notaFinal.toFixed(
+                              1
+                            )}
+                          </strong>
+                        </p>
+                      )}
+                    </div>
+
+                    <a
+                      href={curso.apostilaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={botaoPrincipal}
+                    >
+                      📄 Abrir apostila
+                    </a>
+
+                    <Link
+                      href={`/cursos/${curso.slug}`}
+                      style={botaoSecundario}
+                    >
+                      📝 Acessar avaliação
+                    </Link>
+
+                    {aprovado ? (
+                      <Link
+                        href={`/certificados/${curso.matricula.id}`}
+                        style={botaoCertificado}
+                      >
+                        🏆 Baixar certificado
+                      </Link>
+                    ) : (
+                      <div style={certificadoBloqueado}>
+                        🔒 Certificado liberado após
+                        aprovação
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
 
@@ -490,8 +570,8 @@ export default function AreaDoAluno() {
             <h3>Certificados</h3>
 
             <p style={estiloTexto}>
-              Seus certificados aparecerão aqui após a conclusão e
-              aprovação nos cursos.
+              Os certificados serão liberados depois da
+              aprovação nas avaliações.
             </p>
           </div>
 
@@ -499,8 +579,8 @@ export default function AreaDoAluno() {
             <h3>Avaliações</h3>
 
             <p style={estiloTexto}>
-              As avaliações dos cursos liberados aparecerão nesta
-              seção.
+              Estude a apostila e realize a avaliação do
+              curso para concluir sua formação.
             </p>
           </div>
         </div>
@@ -544,4 +624,49 @@ const linhaCurso: CSSProperties = {
   color: "#555555",
   lineHeight: "1.6",
   margin: "7px 0",
+};
+
+const botaoPrincipal: CSSProperties = {
+  display: "block",
+  backgroundColor: "#111111",
+  color: "#ffffff",
+  padding: "14px",
+  borderRadius: "8px",
+  textDecoration: "none",
+  textAlign: "center",
+  fontWeight: "bold",
+  marginBottom: "10px",
+};
+
+const botaoSecundario: CSSProperties = {
+  display: "block",
+  backgroundColor: "#ffffff",
+  color: "#111111",
+  border: "2px solid #111111",
+  padding: "12px",
+  borderRadius: "8px",
+  textDecoration: "none",
+  textAlign: "center",
+  fontWeight: "bold",
+  marginBottom: "10px",
+};
+
+const botaoCertificado: CSSProperties = {
+  display: "block",
+  backgroundColor: "#166534",
+  color: "#ffffff",
+  padding: "14px",
+  borderRadius: "8px",
+  textDecoration: "none",
+  textAlign: "center",
+  fontWeight: "bold",
+};
+
+const certificadoBloqueado: CSSProperties = {
+  backgroundColor: "#eeeeee",
+  color: "#666666",
+  padding: "13px",
+  borderRadius: "8px",
+  textAlign: "center",
+  fontWeight: "bold",
 };

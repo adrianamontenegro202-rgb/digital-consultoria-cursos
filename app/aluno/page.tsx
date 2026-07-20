@@ -71,9 +71,7 @@ export default function AreaDoAluno() {
       } catch (erro) {
         console.error("Erro ao carregar a área do aluno:", erro);
 
-        setMensagem(
-          "Não foi possível carregar a Área do Aluno."
-        );
+        setMensagem("Não foi possível carregar a Área do Aluno.");
       } finally {
         setCarregando(false);
       }
@@ -137,11 +135,7 @@ export default function AreaDoAluno() {
               Voltar ao início
             </Link>
 
-            <button
-              type="button"
-              onClick={sair}
-              style={botaoSair}
-            >
+            <button type="button" onClick={sair} style={botaoSair}>
               Sair
             </button>
           </div>
@@ -205,7 +199,7 @@ export default function AreaDoAluno() {
                     href={`/aluno/${curso.slug}/prova`}
                     style={botaoProva}
                   >
-                    Fazer prova
+                    Acessar avaliação
                   </Link>
                 </div>
               </article>

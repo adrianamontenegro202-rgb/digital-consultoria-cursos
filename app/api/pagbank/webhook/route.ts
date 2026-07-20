@@ -72,21 +72,11 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-      O corpo precisa ser lido como texto antes de transformar em JSON,
-      porque a assinatura é calculada usando exatamente o corpo recebido.
-    */
     const corpoOriginal = await request.text();
 
     const assinaturaRecebida =
       request.headers.get("x-authenticity-token");
 
-    /*
-      No ambiente de produção, a assinatura é obrigatória.
-
-      No Sandbox, permitimos continuar sem assinatura para facilitar
-      os testes, mas registramos um aviso no log.
-    */
     if (!assinaturaRecebida) {
       if (!ambienteSandbox()) {
         console.error(
@@ -173,62 +163,129 @@ export async function POST(request: Request) {
     });
 
     /*
-      A referência criada no checkout tem este formato:
+      COMPRA DE APOSTILA
 
-      matricula-2-1720000000000
-
-      Aqui retiramos o número da matrícula.
+      Formato:
+      apostila-2-1720000000000
     */
-    const referenciaEncontrada = referencia.match(
+    const referenciaApostila = referencia.match(
+      /^apostila-(\d+)-/
+    );
+
+    if (referenciaApostila) {
+      const compraId = Number(referenciaApostila[1]);
+
+      if (
+        Number.isInteger(compraId) &&
+        compraId > 0
+      ) {
+        const compra =
+          await prisma.compraApostila.findUnique({
+            where: {
+              id: compraId,
+            },
+          });
+
+        if (!compra) {
+          return Response.json({
+            recebido: true,
+            ignorado: true,
+            motivo: "Compra da apostila não encontrada.",
+            referencia,
+            status,
+          });
+        }
+
+        if (status === "PAID") {
+          const compraLiberada =
+            await prisma.compraApostila.update({
+              where: {
+                id: compra.id,
+              },
+              data: {
+                status: "LIBERADO",
+                liberadoEm:
+                  compra.liberadoEm || new Date(),
+              },
+            });
+
+          console.log(
+            `Compra de apostila ${compraLiberada.id} liberada automaticamente.`
+          );
+
+          return Response.json({
+            recebido: true,
+            tipo: "APOSTILA",
+            liberado: true,
+            compraId: compraLiberada.id,
+            apostilaSlug:
+              compraLiberada.apostilaSlug,
+            status,
+          });
+        }
+
+        return Response.json({
+          recebido: true,
+          tipo: "APOSTILA",
+          liberado: false,
+          compraId: compra.id,
+          apostilaSlug: compra.apostilaSlug,
+          status,
+        });
+      }
+    }
+
+    /*
+      COMPRA DE CURSO
+
+      Formato:
+      matricula-2-1720000000000
+    */
+    const referenciaMatricula = referencia.match(
       /^matricula-(\d+)-/
     );
 
     let matricula = null;
 
-    if (referenciaEncontrada) {
+    if (referenciaMatricula) {
       const matriculaId = Number(
-        referenciaEncontrada[1]
+        referenciaMatricula[1]
       );
 
       if (
         Number.isInteger(matriculaId) &&
         matriculaId > 0
       ) {
-        matricula = await prisma.matricula.findUnique({
-          where: {
-            id: matriculaId,
-          },
-        });
+        matricula =
+          await prisma.matricula.findUnique({
+            where: {
+              id: matriculaId,
+            },
+          });
       }
     }
 
-    /*
-      Segunda tentativa:
-      procura pelo ID salvo no campo pagamentoId.
-    */
     if (!matricula && notificacao.id) {
-      matricula = await prisma.matricula.findFirst({
-        where: {
-          pagamentoId: notificacao.id,
-        },
-      });
+      matricula =
+        await prisma.matricula.findFirst({
+          where: {
+            pagamentoId: notificacao.id,
+          },
+        });
     }
 
-    /*
-      Terceira tentativa:
-      procura pelo ID da cobrança.
-    */
     if (!matricula && cobranca?.id) {
-      matricula = await prisma.matricula.findFirst({
-        where: {
-          pagamentoId: cobranca.id,
-        },
-      });
+      matricula =
+        await prisma.matricula.findFirst({
+          where: {
+            pagamentoId: cobranca.id,
+          },
+        });
     }
 
     if (!matricula) {
       console.error(
-        "Webhook recebido, mas a matrícula não foi encontrada.",
+        "Webhook recebido, mas nenhuma compra foi encontrada.",
         {
           referencia,
           notificacaoId: notificacao.id,
@@ -240,16 +297,13 @@ export async function POST(request: Request) {
       return Response.json({
         recebido: true,
         ignorado: true,
-        motivo: "Matrícula não encontrada.",
+        motivo:
+          "Matrícula ou compra de apostila não encontrada.",
         referencia,
         status,
       });
     }
 
-    /*
-      PAID significa pagamento capturado/concluído.
-      Somente nesse status o curso será liberado.
-    */
     if (status === "PAID") {
       const matriculaLiberada =
         await prisma.matricula.update({
@@ -269,6 +323,7 @@ export async function POST(request: Request) {
 
       return Response.json({
         recebido: true,
+        tipo: "CURSO",
         liberado: true,
         matriculaId: matriculaLiberada.id,
         cursoSlug: matriculaLiberada.cursoSlug,
@@ -276,12 +331,9 @@ export async function POST(request: Request) {
       });
     }
 
-    console.log(
-      `Matrícula ${matricula.id} continua pendente. Status recebido: ${status}`
-    );
-
     return Response.json({
       recebido: true,
+      tipo: "CURSO",
       liberado: false,
       matriculaId: matricula.id,
       cursoSlug: matricula.cursoSlug,
@@ -295,7 +347,8 @@ export async function POST(request: Request) {
 
     return Response.json(
       {
-        erro: "Não foi possível processar a notificação.",
+        erro:
+          "Não foi possível processar a notificação.",
         detalhe:
           erro instanceof Error
             ? erro.message

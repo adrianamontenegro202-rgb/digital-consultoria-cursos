@@ -34,3 +34,14 @@ model Matricula {
 
   @@unique([alunoId, cursoSlug])
 }
+
+model CompraApostila {
+  id             Int       @id @default(autoincrement())
+  nomeComprador  String
+  emailComprador String
+  apostilaSlug   String
+  status         String    @default("PENDENTE")
+  pagamentoId    String?   @unique
+  criadoEm       DateTime  @default(now())
+  liberadoEm     DateTime?
+}

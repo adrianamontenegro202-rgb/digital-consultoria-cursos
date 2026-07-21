@@ -117,7 +117,7 @@ export async function POST(request: Request) {
     const apiUrl = process.env.PAGBANK_API_URL;
     const siteUrl =
       process.env.SITE_URL ||
-      "https://digital-consultoria-cursos.netlify.app";
+      "https://digitalconsultoria.netlify.app";
 
     if (!token || !apiUrl) {
       console.error(

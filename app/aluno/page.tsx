@@ -293,6 +293,17 @@ export default function AreaDoAluno() {
                       <span>✏️</span>
                       Acessar avaliação
                     </Link>
+
+                    {curso.matricula.notaFinal !== null &&
+                      curso.matricula.notaFinal >= 7 && (
+                        <Link
+                          href={`/certificado/${curso.slug}`}
+                          style={botaoCertificado}
+                        >
+                          <span>🎓</span>
+                          Emitir certificado
+                        </Link>
+                      )}
                   </div>
                 </article>
               ))}
@@ -636,6 +647,20 @@ const botaoApostila: CSSProperties = {
 
 const botaoProva: CSSProperties = {
   backgroundColor: "#111111",
+  color: "#ffffff",
+  textDecoration: "none",
+  textAlign: "center",
+  padding: "14px",
+  borderRadius: "10px",
+  fontWeight: "bold",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  gap: "8px",
+};
+
+const botaoCertificado: CSSProperties = {
+  backgroundColor: "#15803d",
   color: "#ffffff",
   textDecoration: "none",
   textAlign: "center",

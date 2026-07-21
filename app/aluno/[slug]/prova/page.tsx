@@ -1,11 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { cursos } from "../../../../data/cursos";
 import { provas } from "../../../../data/provas";
+
+type AlunoLogado = {
+  id: number;
+  nome?: string;
+  email?: string;
+};
 
 type Resultado = {
   acertos: number;
@@ -13,84 +19,158 @@ type Resultado = {
   aprovado: boolean;
 };
 
-export default function PaginaDaProva() {
-  const params = useParams<{ slug: string }>();
+type RespostaDaApi = {
+  erro?: string;
+  mensagem?: string;
+  aprovado?: boolean;
+};
 
-  const slug = String(params?.slug || "").toLowerCase();
+export default function PaginaDaProva() {
+  const router = useRouter();
+  const params = useParams<{ slug: string | string[] }>();
+
+  const parametroSlug = params?.slug;
+  const slug = String(
+    Array.isArray(parametroSlug) ? parametroSlug[0] : parametroSlug || "",
+  ).toLowerCase();
 
   const curso = useMemo(() => {
-    return cursos.find((item) => item.slug === slug);
+    return cursos.find((item) => item.slug.toLowerCase() === slug);
   }, [slug]);
 
   const prova = provas[slug];
 
-  const [respostas, setRespostas] = useState<
-    Record<number, number>
-  >({});
+  const [alunoId, setAlunoId] = useState<number | null>(null);
+  const [respostas, setRespostas] = useState<Record<number, number>>({});
+  const [resultado, setResultado] = useState<Resultado | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
 
-  const [resultado, setResultado] =
-    useState<Resultado | null>(null);
+  useEffect(() => {
+    try {
+      const alunoSalvo = localStorage.getItem("aluno");
 
-  function marcarResposta(
-    indiceQuestao: number,
-    indiceAlternativa: number
-  ) {
+      if (!alunoSalvo) {
+        router.replace("/login");
+        return;
+      }
+
+      const aluno: AlunoLogado = JSON.parse(alunoSalvo);
+
+      if (!Number.isInteger(aluno.id) || aluno.id <= 0) {
+        localStorage.removeItem("aluno");
+        router.replace("/login");
+        return;
+      }
+
+      setAlunoId(aluno.id);
+    } catch (error) {
+      console.error("Erro ao carregar o aluno:", error);
+      localStorage.removeItem("aluno");
+      router.replace("/login");
+    }
+  }, [router]);
+
+  function marcarResposta(indiceQuestao: number, indiceAlternativa: number) {
+    if (salvando) {
+      return;
+    }
+
     setRespostas((respostasAnteriores) => ({
       ...respostasAnteriores,
       [indiceQuestao]: indiceAlternativa,
     }));
 
     setResultado(null);
+    setErro("");
   }
 
-  function corrigirProva() {
-    if (!prova) {
+  async function corrigirProva() {
+    if (!prova || salvando) {
+      return;
+    }
+
+    if (prova.questoes.length === 0) {
+      setErro("Esta prova ainda não possui questões cadastradas.");
       return;
     }
 
     const todasRespondidas = prova.questoes.every(
-      (_questao, indice) =>
-        respostas[indice] !== undefined
+      (_questao, indice) => respostas[indice] !== undefined,
     );
 
     if (!todasRespondidas) {
-      window.alert(
-        "Responda todas as questões antes de finalizar."
-      );
-
+      window.alert("Responda todas as questões antes de finalizar.");
       return;
     }
 
-    const acertos = prova.questoes.reduce(
-      (total, questao, indice) => {
-        if (respostas[indice] === questao.correta) {
-          return total + 1;
-        }
+    if (!alunoId) {
+      window.alert("Sua sessão expirou. Entre novamente para fazer a prova.");
+      router.push("/login");
+      return;
+    }
 
-        return total;
-      },
-      0
-    );
+    const acertos = prova.questoes.reduce((total, questao, indice) => {
+      return respostas[indice] === questao.correta ? total + 1 : total;
+    }, 0);
 
-    const nota = Number(
-      (
-        (acertos / prova.questoes.length) *
-        10
-      ).toFixed(1)
-    );
+    const nota = Number(((acertos / prova.questoes.length) * 10).toFixed(1));
 
-    const aprovado = nota >= prova.notaMinima;
+    const aprovadoCalculado = nota >= prova.notaMinima;
 
-    setResultado({
-      acertos,
-      nota,
-      aprovado,
-    });
+    setSalvando(true);
+    setErro("");
+
+    try {
+      const resposta = await fetch("/api/provas/resultado", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          alunoId,
+          cursoSlug: slug,
+          nota,
+        }),
+      });
+
+      const dados = (await resposta.json()) as RespostaDaApi;
+
+      if (!resposta.ok) {
+        throw new Error(
+          dados.erro || "Não foi possível registrar o resultado da prova.",
+        );
+      }
+
+      setResultado({
+        acertos,
+        nota,
+        aprovado:
+          typeof dados.aprovado === "boolean"
+            ? dados.aprovado
+            : aprovadoCalculado,
+      });
+
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: "smooth",
+      });
+    } catch (error) {
+      console.error("Erro ao salvar o resultado da prova:", error);
+      setErro(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível registrar o resultado da prova.",
+      );
+    } finally {
+      setSalvando(false);
+    }
   }
 
   function refazerProva() {
     setRespostas({});
     setResultado(null);
+    setErro("");
 
     window.scrollTo({
       top: 0,
@@ -104,10 +184,7 @@ export default function PaginaDaProva() {
         <div style={estiloMensagem}>
           <h1>Curso não encontrado</h1>
 
-          <p>
-            O curso informado não está cadastrado na
-            plataforma.
-          </p>
+          <p>O curso informado não está cadastrado na plataforma.</p>
 
           <Link href="/aluno" style={botaoVoltar}>
             Voltar para a Área do Aluno
@@ -123,15 +200,11 @@ export default function PaginaDaProva() {
         <div style={estiloMensagem}>
           <h1>{curso.nome}</h1>
 
-          <p>
-            A avaliação deste curso ainda não foi
-            cadastrada.
-          </p>
+          <p>A avaliação deste curso ainda não foi cadastrada.</p>
 
           <p>
             Quando as questões forem adicionadas ao arquivo{" "}
-            <strong>data/provas.ts</strong>, a prova
-            aparecerá automaticamente.
+            <strong>data/provas.ts</strong>, a prova aparecerá automaticamente.
           </p>
 
           <Link href="/aluno" style={botaoVoltar}>
@@ -147,17 +220,12 @@ export default function PaginaDaProva() {
       <section style={estiloConteudo}>
         <div style={estiloTopo}>
           <div>
-            <p style={estiloCategoria}>
-              {curso.categoria}
-            </p>
+            <p style={estiloCategoria}>{curso.categoria}</p>
 
-            <h1 style={estiloTitulo}>
-              {prova.titulo}
-            </h1>
+            <h1 style={estiloTitulo}>{prova.titulo}</h1>
 
             <p style={estiloSubtitulo}>
-              Responda todas as questões e clique em
-              finalizar.
+              Responda todas as questões e clique em finalizar.
             </p>
           </div>
 
@@ -167,77 +235,69 @@ export default function PaginaDaProva() {
         </div>
 
         <div style={estiloAviso}>
-          <strong>
-            Nota mínima para aprovação:
-          </strong>{" "}
+          <strong>Nota mínima para aprovação:</strong>{" "}
           {prova.notaMinima.toFixed(1)}
         </div>
 
         <div style={estiloListaQuestoes}>
-          {prova.questoes.map(
-            (questao, indiceQuestao) => (
-              <article
-                key={`${slug}-${indiceQuestao}`}
-                style={estiloQuestao}
-              >
-                <h2 style={estiloPergunta}>
-                  {indiceQuestao + 1}.{" "}
-                  {questao.pergunta}
-                </h2>
+          {prova.questoes.map((questao, indiceQuestao) => (
+            <article key={`${slug}-${indiceQuestao}`} style={estiloQuestao}>
+              <h2 style={estiloPergunta}>
+                {indiceQuestao + 1}. {questao.pergunta}
+              </h2>
 
-                <div style={estiloAlternativas}>
-                  {questao.alternativas.map(
-                    (
-                      alternativa,
-                      indiceAlternativa
-                    ) => {
-                      const selecionada =
-                        respostas[indiceQuestao] ===
-                        indiceAlternativa;
+              <div style={estiloAlternativas}>
+                {questao.alternativas.map((alternativa, indiceAlternativa) => {
+                  const selecionada =
+                    respostas[indiceQuestao] === indiceAlternativa;
 
-                      return (
-                        <label
-                          key={`${indiceQuestao}-${indiceAlternativa}`}
-                          style={{
-                            ...estiloAlternativa,
-                            borderColor: selecionada
-                              ? "#111111"
-                              : "#dddddd",
-                            backgroundColor: selecionada
-                              ? "#f3f4f6"
-                              : "#ffffff",
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            name={`questao-${indiceQuestao}`}
-                            checked={selecionada}
-                            onChange={() =>
-                              marcarResposta(
-                                indiceQuestao,
-                                indiceAlternativa
-                              )
-                            }
-                          />
+                  return (
+                    <label
+                      key={`${indiceQuestao}-${indiceAlternativa}`}
+                      style={{
+                        ...estiloAlternativa,
+                        borderColor: selecionada ? "#111111" : "#dddddd",
+                        backgroundColor: selecionada ? "#f3f4f6" : "#ffffff",
+                        opacity: salvando ? 0.7 : 1,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name={`questao-${indiceQuestao}`}
+                        checked={selecionada}
+                        disabled={salvando}
+                        onChange={() =>
+                          marcarResposta(indiceQuestao, indiceAlternativa)
+                        }
+                      />
 
-                          <span>{alternativa}</span>
-                        </label>
-                      );
-                    }
-                  )}
-                </div>
-              </article>
-            )
-          )}
+                      <span>{alternativa}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </article>
+          ))}
         </div>
+
+        {erro && (
+          <div role="alert" style={estiloErro}>
+            {erro}
+          </div>
+        )}
 
         {!resultado && (
           <button
             type="button"
             onClick={corrigirProva}
-            style={botaoFinalizar}
+            disabled={salvando || !alunoId}
+            style={{
+              ...botaoFinalizar,
+              opacity: salvando || !alunoId ? 0.65 : 1,
+              cursor: salvando || !alunoId ? "not-allowed" : "pointer",
+            }}
           >
-            Finalizar prova
+            {salvando ? "Registrando resultado..." : "Finalizar prova"}
           </button>
         )}
 
@@ -245,15 +305,9 @@ export default function PaginaDaProva() {
           <div
             style={{
               ...estiloResultado,
-              backgroundColor: resultado.aprovado
-                ? "#dcfce7"
-                : "#fee2e2",
-              color: resultado.aprovado
-                ? "#166534"
-                : "#991b1b",
-              borderColor: resultado.aprovado
-                ? "#86efac"
-                : "#fecaca",
+              backgroundColor: resultado.aprovado ? "#dcfce7" : "#fee2e2",
+              color: resultado.aprovado ? "#166534" : "#991b1b",
+              borderColor: resultado.aprovado ? "#86efac" : "#fecaca",
             }}
           >
             <h2 style={{ marginTop: 0 }}>
@@ -263,45 +317,30 @@ export default function PaginaDaProva() {
             </h2>
 
             <p>
-              Você acertou{" "}
-              <strong>{resultado.acertos}</strong> de{" "}
-              <strong>
-                {prova.questoes.length}
-              </strong>{" "}
-              questões.
+              Você acertou <strong>{resultado.acertos}</strong> de{" "}
+              <strong>{prova.questoes.length}</strong> questões.
             </p>
 
             <p>
-              Sua nota foi:{" "}
-              <strong>
-                {resultado.nota.toFixed(1)}
-              </strong>
+              Sua nota foi: <strong>{resultado.nota.toFixed(1)}</strong>
             </p>
 
             {resultado.aprovado ? (
               <p>
-                Sua aprovação foi registrada. O
-                certificado será liberado na Área do
-                Aluno.
+                Sua aprovação foi registrada. O certificado foi liberado na Área
+                do Aluno.
               </p>
             ) : (
               <p>
-                Revise a apostila e tente novamente.
+                O resultado foi registrado. Revise a apostila e tente novamente.
               </p>
             )}
 
-            <button
-              type="button"
-              onClick={refazerProva}
-              style={botaoRefazer}
-            >
+            <button type="button" onClick={refazerProva} style={botaoRefazer}>
               Refazer prova
             </button>
 
-            <Link
-              href="/aluno"
-              style={botaoAreaAluno}
-            >
+            <Link href="/aluno" style={botaoAreaAluno}>
               Voltar para a Área do Aluno
             </Link>
           </div>
@@ -401,6 +440,16 @@ const botaoFinalizar: CSSProperties = {
   fontSize: "17px",
   fontWeight: "bold",
   cursor: "pointer",
+};
+
+const estiloErro: CSSProperties = {
+  marginTop: "25px",
+  backgroundColor: "#fee2e2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+  borderRadius: "10px",
+  padding: "15px",
+  fontWeight: "bold",
 };
 
 const estiloResultado: CSSProperties = {

@@ -47,15 +47,16 @@ export default function RetornoPagamento() {
             height: "70px",
             margin: "20px auto",
             borderRadius: "50%",
-            backgroundColor: "#dcfce7",
-            color: "#166534",
+            backgroundColor: "#fef3c7",
+            color: "#92400e",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontSize: "36px",
+            fontWeight: "bold",
           }}
         >
-          ✓
+          ⏳
         </div>
 
         <h1
@@ -65,7 +66,7 @@ export default function RetornoPagamento() {
             margin: "10px 0",
           }}
         >
-          Pagamento recebido
+          Pagamento em análise
         </h1>
 
         <p
@@ -75,8 +76,19 @@ export default function RetornoPagamento() {
             lineHeight: "1.7",
           }}
         >
-          Estamos verificando o pagamento. Assim que ele for confirmado pelo
-          PagBank, o curso será liberado automaticamente na sua Área do Aluno.
+          Seu pedido foi iniciado, mas o acesso ainda não significa que o
+          pagamento foi aprovado.
+        </p>
+
+        <p
+          style={{
+            color: "#666666",
+            fontSize: "17px",
+            lineHeight: "1.7",
+          }}
+        >
+          O curso ou a apostila será liberado somente depois que o PagBank
+          confirmar o pagamento.
         </p>
 
         <div
@@ -89,8 +101,8 @@ export default function RetornoPagamento() {
             lineHeight: "1.6",
           }}
         >
-          Pagamentos por Pix costumam ser confirmados rapidamente. Cartões
-          podem passar por análise.
+          Pix costuma ser confirmado rapidamente. Cartões, boletos e outros
+          meios podem levar mais tempo para análise ou compensação.
         </div>
 
         <Link
@@ -106,7 +118,7 @@ export default function RetornoPagamento() {
             fontWeight: "bold",
           }}
         >
-          Ir para a Área do Aluno
+          Verificar Área do Aluno
         </Link>
 
         <Link

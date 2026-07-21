@@ -38,7 +38,7 @@ export const cursos = [
     slug: "nr11",
     categoria: "Segurança do Trabalho",
     nome: "NR-11",
-    preco: 0.5,
+    preco: 49.99,
     apostilaUrl: "/apostilas/nr11.pdf",
   },
   {

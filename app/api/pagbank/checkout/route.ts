@@ -25,23 +25,15 @@ export async function POST(request: Request) {
 
     if (!Number.isInteger(alunoId) || alunoId <= 0) {
       return Response.json(
-        {
-          erro: "O ID do aluno é inválido.",
-        },
-        {
-          status: 400,
-        }
+        { erro: "O ID do aluno é inválido." },
+        { status: 400 }
       );
     }
 
     if (!cursoSlug) {
       return Response.json(
-        {
-          erro: "O curso não foi informado.",
-        },
-        {
-          status: 400,
-        }
+        { erro: "O curso não foi informado." },
+        { status: 400 }
       );
     }
 
@@ -51,12 +43,8 @@ export async function POST(request: Request) {
 
     if (!curso) {
       return Response.json(
-        {
-          erro: "Curso não encontrado.",
-        },
-        {
-          status: 404,
-        }
+        { erro: "Curso não encontrado." },
+        { status: 404 }
       );
     }
 
@@ -73,12 +61,8 @@ export async function POST(request: Request) {
 
     if (!aluno) {
       return Response.json(
-        {
-          erro: "Aluno não encontrado.",
-        },
-        {
-          status: 404,
-        }
+        { erro: "Aluno não encontrado." },
+        { status: 404 }
       );
     }
 
@@ -97,9 +81,7 @@ export async function POST(request: Request) {
           erro:
             "Este curso já está liberado na Área do Aluno.",
         },
-        {
-          status: 409,
-        }
+        { status: 409 }
       );
     }
 
@@ -129,9 +111,7 @@ export async function POST(request: Request) {
           erro:
             "A configuração do PagBank está incompleta.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -145,6 +125,56 @@ export async function POST(request: Request) {
     const referencia =
       `matricula-${matricula.id}-${Date.now()}`;
 
+    const corpoDaRequisicao = {
+      reference_id: referencia,
+
+      items: [
+        {
+          reference_id: curso.slug,
+          name: curso.nome.slice(0, 100),
+          description:
+            `Curso ${curso.nome} - Digital Consultoria`.slice(
+              0,
+              255
+            ),
+          quantity: 1,
+          unit_amount: valorEmCentavos,
+        },
+      ],
+
+      payment_methods: [
+        {
+          type: "PIX",
+        },
+        {
+          type: "CREDIT_CARD",
+        },
+        {
+          type: "DEBIT_CARD",
+        },
+        {
+          type: "BOLETO",
+        },
+      ],
+
+      payment_notification_urls: [
+        `${enderecoDoSite}/api/pagbank/webhook`,
+      ],
+
+      redirect_url:
+        `${enderecoDoSite}/pagamento/retorno`,
+
+      return_url:
+        `${enderecoDoSite}/pagamento/retorno`,
+
+      redirect_waiting_time: 5,
+    };
+
+    console.log(
+      "PAGBANK_HOMOLOGACAO_REQUEST:",
+      JSON.stringify(corpoDaRequisicao, null, 2)
+    );
+
     const respostaPagBank = await fetch(
       `${enderecoDaApi}/checkouts`,
       {
@@ -156,50 +186,7 @@ export async function POST(request: Request) {
           Accept: "application/json",
         },
 
-        body: JSON.stringify({
-          reference_id: referencia,
-
-          items: [
-            {
-              reference_id: curso.slug,
-              name: curso.nome.slice(0, 100),
-              description:
-                `Curso ${curso.nome} - Digital Consultoria`.slice(
-                  0,
-                  255
-                ),
-              quantity: 1,
-              unit_amount: valorEmCentavos,
-            },
-          ],
-
-          payment_methods: [
-            {
-              type: "PIX",
-            },
-            {
-              type: "CREDIT_CARD",
-            },
-            {
-              type: "DEBIT_CARD",
-            },
-            {
-              type: "BOLETO",
-            },
-          ],
-
-          payment_notification_urls: [
-            `${enderecoDoSite}/api/pagbank/webhook`,
-          ],
-
-          redirect_url:
-            `${enderecoDoSite}/pagamento/retorno`,
-
-          return_url:
-            `${enderecoDoSite}/pagamento/retorno`,
-
-          redirect_waiting_time: 5,
-        }),
+        body: JSON.stringify(corpoDaRequisicao),
 
         cache: "no-store",
       }
@@ -207,6 +194,16 @@ export async function POST(request: Request) {
 
     const textoResposta =
       await respostaPagBank.text();
+
+    console.log(
+      "PAGBANK_HOMOLOGACAO_STATUS:",
+      respostaPagBank.status
+    );
+
+    console.log(
+      "PAGBANK_HOMOLOGACAO_RESPONSE:",
+      textoResposta
+    );
 
     let checkout: RespostaPagBank = {};
 
@@ -233,9 +230,7 @@ export async function POST(request: Request) {
             checkout.message ||
             "Erro não informado.",
         },
-        {
-          status: respostaPagBank.status,
-        }
+        { status: respostaPagBank.status }
       );
     }
 
@@ -254,9 +249,7 @@ export async function POST(request: Request) {
           erro:
             "O PagBank não devolveu o link de pagamento.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -287,9 +280,7 @@ export async function POST(request: Request) {
         erro:
           "Não foi possível preparar o pagamento.",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

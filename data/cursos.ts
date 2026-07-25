@@ -52,7 +52,7 @@ export const cursos = [
     slug: "nr18",
     categoria: "Segurança do Trabalho",
     nome: "NR-18",
-    preco: 1.0,
+    preco: 49.90,
     apostilaUrl: "/apostilas/nr18.pdf",
   },
   {
@@ -115,7 +115,7 @@ export const cursos = [
     slug: "primeiros-socorros",
     categoria: "Saúde",
     nome: "Primeiros Socorros",
-    preco: 180,
+    preco: 1,
     apostilaUrl: "/apostilas/primeiros-socorros.pdf",
   },
   {

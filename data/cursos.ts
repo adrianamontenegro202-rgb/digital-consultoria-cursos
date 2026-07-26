@@ -115,7 +115,7 @@ export const cursos = [
     slug: "primeiros-socorros",
     categoria: "Saúde",
     nome: "Primeiros Socorros",
-    preco: 1,
+    preco: 180,
     apostilaUrl: "/apostilas/primeiros-socorros.pdf",
   },
   {
